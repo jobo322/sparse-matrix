@@ -155,6 +155,10 @@ export class SparseMatrix {
     return this;
   }
 
+  get density() {
+    return this.cardinality / this.rows / this.columns;
+  }
+
   mmul(other) {
     if (this.columns !== other.rows) {
       // eslint-disable-next-line no-console
@@ -163,11 +167,16 @@ export class SparseMatrix {
       );
     }
 
+    const densityOther = other.density;
+    const densityThis = this.density;
+    if (this.cardinality < 42 && other.cardinality < 42) {
+      return this._mmulSmall(other);
+    } else if (other.cardinality < 0.015 * other.rows + 18.073) {
+      return this._mmulLowDensity(other);
+    }
+
     const m = this.rows;
     const p = other.columns;
-
-    const result = matrixCreateEmpty(m, p);
-
     const {
       columns: otherCols,
       rows: otherRows,
@@ -177,26 +186,105 @@ export class SparseMatrix {
       columns: thisCols,
       rows: thisRows,
       values: thisValues,
-    } = this.getNonZeros({ format: 'csc' });
+    } = this.getNonZeros();
 
-    const thisNbCols = this.columns;
-    for (let t = 0; t < thisNbCols; t++) {
-      const tStart = thisCols[t];
-      const tEnd = thisCols[t + 1];
-      const oStart = otherRows[t];
-      const oEnd = otherRows[t + 1];
-      for (let f = tStart; f < tEnd; f++) {
-        for (let k = oStart; k < oEnd; k++) {
-          const i = thisRows[f];
-          const l = otherCols[k];
-          result[i][l] += thisValues[f] * otherValues[k];
+    const result = new SparseMatrix(m, p);
+    const nbThisActive = thisCols.length;
+    for (let t = 0; t < nbThisActive; t++) {
+      const i = thisRows[t];
+      const j = thisCols[t];
+      const oStart = otherRows[j];
+      const oEnd = otherRows[j + 1];
+      for (let k = oStart; k < oEnd; k++) {
+        const l = otherCols[k];
+        result.set(i, l, result.get(i, l) + otherValues[k] * thisValues[t]);
+      }
+    }
+
+    return result;
+  }
+
+  _mmulSmall(other) {
+    const m = this.rows;
+    const p = other.columns;
+    const {
+      columns: otherCols,
+      rows: otherRows,
+      values: otherValues,
+    } = other.getNonZeros();
+
+    const nbOtherActive = otherCols.length;
+    const result = new SparseMatrix(m, p);
+    this.withEachNonZero((i, j, v1) => {
+      for (let o = 0; o < nbOtherActive; o++) {
+        if (j === otherRows[o]) {
+          const l = otherCols[o];
+          result.set(i, l, result.get(i, l) + otherValues[o] * v1);
+        }
+      }
+    });
+    return result;
+  }
+
+  _mmulLowDensity(other) {
+    const m = this.rows;
+    const p = other.columns;
+    const {
+      columns: otherCols,
+      rows: otherRows,
+      values: otherValues,
+    } = other.getNonZeros();
+    const {
+      columns: thisCols,
+      rows: thisRows,
+      values: thisValues,
+    } = this.getNonZeros();
+
+    const result = new SparseMatrix(m, p);
+    const nbOtherActive = otherCols.length;
+    const nbThisActive = thisCols.length;
+    for (let t = 0; t < nbThisActive; t++) {
+      const i = thisRows[t];
+      const j = thisCols[t];
+      for (let o = 0; o < nbOtherActive; o++) {
+        if (j === otherRows[o]) {
+          const l = otherCols[o];
+          result.set(i, l, result.get(i, l) + otherValues[o] * thisValues[t]);
         }
       }
     }
 
-    return new SparseMatrix(result);
+    return result;
   }
+  _mmulMediumDensity(other) {
+    const m = this.rows;
+    const p = other.columns;
+    const {
+      columns: otherCols,
+      rows: otherRows,
+      values: otherValues,
+    } = other.getNonZeros({ format: 'csr' });
+    const {
+      columns: thisCols,
+      rows: thisRows,
+      values: thisValues,
+    } = this.getNonZeros();
 
+    const result = new SparseMatrix(m, p);
+    const nbThisActive = thisCols.length;
+    for (let t = 0; t < nbThisActive; t++) {
+      const i = thisRows[t];
+      const j = thisCols[t];
+      const oStart = otherRows[j];
+      const oEnd = otherRows[j + 1];
+      for (let k = oStart; k < oEnd; k++) {
+        const l = otherCols[k];
+        result.set(i, l, result.get(i, l) + otherValues[k] * thisValues[t]);
+      }
+    }
+
+    return result;
+  }
   /**
    * @param {SparseMatrix} other
    * @returns {SparseMatrix}

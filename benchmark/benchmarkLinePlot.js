@@ -6,7 +6,7 @@ import { SparseMatrix } from '../src/index.js';
 import { SparseMatrix as SparseMatrixOld } from './class/SparseMatrixOld.js';
 import { randomMatrix } from './utils/randomMatrix.js';
 
-const density = 0.02; // Fixed density for this comparison;
+const density = 0.03; // Fixed density for this comparison;
 
 /* eslint 
 func-names: 0 
@@ -14,7 +14,7 @@ camelcase: 0
 */
 // Prepare matrices once
 const sizes = Array.from(
-  xSequentialFillFromStep({ from: 4, step: 4, size: 13 }),
+  xSequentialFillFromStep({ from: 4, step: 4, size: 9 }),
 );
 lineplot(() => {
   bench('Sparse.mmul($size)', function* (ctx) {
@@ -25,7 +25,7 @@ lineplot(() => {
     const B = new SparseMatrix(randomMatrix(size, size, density));
     // Benchmark the multiplication
     yield () => do_not_optimize(A.mmul(B));
-  }).args('size', sizes); // 16, 32, 64, 128, 256
+  }).args('size', sizes); //.range('size', 32, 1024, 2); // 16, 32, 64, 128, 256
 
   bench('SparseOld.mmul($size)', function* (ctx) {
     const size = ctx.get('size');
@@ -36,7 +36,7 @@ lineplot(() => {
 
     // Benchmark the multiplication
     yield () => do_not_optimize(AOld.mmul(BOld));
-  }).args('size', sizes);
+  }).args('size', sizes); //.range('size', 32, 1024, 2); //.args('size', sizes);
 
   // bench('Dense.mmul($size)', function* (ctx) {
   //   const size = ctx.get('size');

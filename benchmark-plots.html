@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Benchmark Plots</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .plot-container { display: flex; flex-direction: column; gap: 32px; max-width: 900px; margin: 0 auto; }
+    canvas { background: #fff; border: 1px solid #ccc; }
+    h2 { text-align: center; }
+  </style>
+</head>
+<body>
+  <h2>Benchmark Results</h2>
+  <div class="plot-container">
+    <div>
+      <h3>Size 128</h3>
+      <canvas id="plot128"></canvas>
+    </div>
+    <div>
+      <h3>Size 256</h3>
+      <canvas id="plot256"></canvas>
+    </div>
+    <div>
+      <h3>Size 512</h3>
+      <canvas id="plot512"></canvas>
+    </div>
+    <div>
+      <h3>Size 1024</h3>
+      <canvas id="plot1024"></canvas>
+    </div>
+    <div>
+      <h3>Size 2048</h3>
+      <canvas id="plot2048"></canvas>
+    </div>
+    <div>
+      <h3>Size 3072</h3>
+      <canvas id="plot3072"></canvas>
+    </div>
+    <div>
+      <h3>Size 4096</h3>
+      <canvas id="plot4096"></canvas>
+    </div>
+  </div>
+  <script>
+    async function fetchData(filename) {
+      const resp = await fetch(filename + '.json');
+      return resp.json();
+    }
+
+    function splitSeries(data) {
+      // Assumes data is [mmulSmall..., mmulLowDensity...]
+      const firstName = data[0]?.name;
+      let splitIdx = data.findIndex(e => e.name !== firstName);
+      if (splitIdx === -1) splitIdx = data.length;
+      const mmulSmall = data.slice(0, splitIdx);
+      const mmulLowDensity = data.slice(splitIdx);
+      return { mmulSmall, mmulLowDensity };
+    }
+
+    function makeDatasets(series) {
+      const colors = {
+        mmulSmall: 'rgba(54, 162, 235, 1)',
+        mmulLowDensity: 'rgba(255, 99, 132, 1)'
+      };
+      return [
+        {
+          label: series.mmulSmall[0]?.name || 'mmulSmall($size)',
+          data: series.mmulSmall.map((e, i) => ({ x: i, y: e.avg })),
+          borderColor: colors.mmulSmall,
+          backgroundColor: colors.mmulSmall,
+          fill: false,
+          tension: 0.1
+        },
+        {
+          label: series.mmulLowDensity[0]?.name || 'mmulLowDensity()($cardinality)',
+          data: series.mmulLowDensity.map((e, i) => ({ x: i, y: e.avg })),
+          borderColor: colors.mmulLowDensity,
+          backgroundColor: colors.mmulLowDensity,
+          fill: false,
+          tension: 0.1
+        }
+      ];
+    }
+
+    function linearRegression(xs, ys) {
+      const n = xs.length;
+      const sumX = xs.reduce((a, b) => a + b, 0);
+      const sumY = ys.reduce((a, b) => a + b, 0);
+      const sumXY = xs.reduce((sum, x, i) => sum + x * ys[i], 0);
+      const sumXX = xs.reduce((sum, x) => sum + x * x, 0);
+
+      const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+      const intercept = (sumY - slope * sumX) / n;
+
+      // R^2
+      const meanY = sumY / n;
+      const ssTot = ys.reduce((sum, y) => sum + Math.pow(y - meanY, 2), 0);
+      const ssRes = ys.reduce((sum, y, i) => sum + Math.pow(y - (slope * xs[i] + intercept), 2), 0);
+      const r2 = 1 - ssRes / ssTot;
+
+      return { slope, intercept, r2 };
+    }
+
+    function showRegressionFormula(canvasId, regression) {
+      const formula = `y = ${regression.slope.toFixed(3)}x + ${regression.intercept.toFixed(3)}`;
+      const r2 = `R² = ${regression.r2.toFixed(4)}`;
+      // Find the parent div and append or update a formula display
+      const canvas = document.getElementById(canvasId);
+      let info = canvas.parentNode.querySelector('.regression-info');
+      if (!info) {
+        info = document.createElement('div');
+        info.className = 'regression-info';
+        info.style.fontFamily = 'monospace';
+        info.style.marginTop = '8px';
+        canvas.parentNode.appendChild(info);
+      }
+      info.textContent = `${formula}   ${r2}`;
+    }
+
+    // Store regression results for summary plot
+    const regressionSummary = [];
+    // Store intersection points for intersection summary plot
+    const intersectionSummary = [];
+
+    async function plotChart(canvasId, filename, size = null) {
+      const data = await fetchData(filename);
+      const series = splitSeries(data);
+      const datasets = makeDatasets(series);
+
+      // Linear regression for mmulLowDensity
+      if (series.mmulLowDensity.length > 1) {
+        const xs = series.mmulLowDensity.map((_, i) => i);
+        const ys = series.mmulLowDensity.map(e => e.avg);
+        const reg = linearRegression(xs, ys);
+
+        // Add regression line to chart
+        const regLine = {
+          label: 'Regression (mmulLowDensity)',
+          data: [
+            { x: 0, y: reg.intercept },
+            { x: xs[xs.length - 1], y: reg.slope * xs[xs.length - 1] + reg.intercept }
+          ],
+          borderColor: 'rgba(0,0,0,0.5)',
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+        };
+        datasets.push(regLine);
+
+        showRegressionFormula(canvasId, reg);
+
+        // Save for summary plot if size is provided
+        if (size) {
+          regressionSummary.push({ size, intercept: reg.intercept, slope: reg.slope });
+        }
+      }
+
+      // --- NEW: Find intersection point between mmulSmall and mmulLowDensity ---
+      if (series.mmulSmall.length && series.mmulLowDensity.length) {
+        // Assume both have the same x (index)
+        const n = Math.min(series.mmulSmall.length, series.mmulLowDensity.length);
+        let intersectionX = null;
+        for (let i = 1; i < n; ++i) {
+          const y1a = series.mmulSmall[i-1].avg;
+          const y2a = series.mmulLowDensity[i-1].avg;
+          const y1b = series.mmulSmall[i].avg;
+          const y2b = series.mmulLowDensity[i].avg;
+          // Check if they cross between i-1 and i
+          if ((y1a - y2a) * (y1b - y2b) <= 0) {
+            // Linear interpolation to estimate intersection x
+            const denom = (y1b - y2b) - (y1a - y2a);
+            let frac = 0.5;
+            if (denom !== 0) {
+              frac = (y2a - y1a) / denom;
+            }
+            intersectionX = (i-1) + frac;
+            break;
+          }
+        }
+        if (intersectionX !== null && size) {
+          intersectionSummary.push({ size, x: intersectionX });
+        }
+      }
+      // --- END NEW ---
+
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true } },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Index' }
+            },
+            y: {
+              title: { display: true, text: 'avg (ms)' }
+            }
+          }
+        }
+      });
+    }
+
+    // Helper to extract size from plot id
+    function getSizeFromId(id) {
+      return Number(id.replace('plot', ''));
+    }
+
+    // List of plot ids and sizes
+    const plotIds = [
+      'plot128', 'plot256', 'plot512', 'plot1024', 'plot2048', 'plot3072', 'plot4096'
+    ];
+
+    // Plot all charts and then the summary
+    (async function() {
+      for (const id of plotIds) {
+        await plotChart(id, `benchmark-results-${getSizeFromId(id)}`, getSizeFromId(id));
+      }
+      // After all, plot the summary
+      plotRegressionSummary();
+      plotIntersectionSummary(); // <-- NEW
+    })();
+
+    // Plot summary of intercept and slope vs size
+    function plotRegressionSummary() {
+      // Sort by size
+      regressionSummary.sort((a, b) => a.size - b.size);
+      const sizes = regressionSummary.map(r => r.size);
+      const intercepts = regressionSummary.map(r => r.intercept);
+      const slopes = regressionSummary.map(r => r.slope);
+
+      // Create or select the summary container
+      let summaryDiv = document.getElementById('regression-summary');
+      if (!summaryDiv) {
+        summaryDiv = document.createElement('div');
+        summaryDiv.id = 'regression-summary';
+        summaryDiv.innerHTML = `
+          <h2>Regression Intercept and Slope vs Size</h2>
+          <canvas id="summaryPlot" width="800" height="400"></canvas>
+        `;
+        document.body.appendChild(summaryDiv);
+      }
+
+      const ctx = document.getElementById('summaryPlot').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: sizes,
+          datasets: [
+            {
+              label: 'Intercept (mmulLowDensity)',
+              data: intercepts,
+              borderColor: 'rgba(255, 159, 64, 1)',
+              backgroundColor: 'rgba(255, 159, 64, 0.2)',
+              fill: false,
+              tension: 0.1,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Slope (mmulLowDensity)',
+              data: slopes,
+              borderColor: 'rgba(75, 192, 192, 1)',
+              backgroundColor: 'rgba(75, 192, 192, 0.2)',
+              fill: false,
+              tension: 0.1,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true } },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Matrix Size' }
+            },
+            y: {
+              title: { display: true, text: 'Intercept (ms)' },
+              position: 'left'
+            },
+            y1: {
+              title: { display: true, text: 'Slope (ms/index)' },
+              position: 'right',
+              grid: { drawOnChartArea: false }
+            }
+          }
+        }
+      });
+    }
+
+    // --- NEW: Plot intersection summary ---
+    function plotIntersectionSummary() {
+      // Sort by size
+      intersectionSummary.sort((a, b) => a.size - b.size);
+      const sizes = intersectionSummary.map(r => r.size);
+      const xs = intersectionSummary.map(r => r.x);
+
+      // Linear regression on intersection points
+      let reg = null;
+      if (sizes.length > 1) {
+        reg = linearRegression(sizes, xs);
+      }
+
+      // Create or select the intersection summary container
+      let summaryDiv = document.getElementById('intersection-summary');
+      if (!summaryDiv) {
+        summaryDiv = document.createElement('div');
+        summaryDiv.id = 'intersection-summary';
+        summaryDiv.innerHTML = `
+          <h2>Intersección mmulSmall vs mmulLowDensity (x vs size)</h2>
+          <canvas id="intersectionPlot" width="800" height="400"></canvas>
+          <div class="intersection-regression-info" style="font-family:monospace;margin-top:8px"></div>
+        `;
+        document.body.appendChild(summaryDiv);
+      }
+
+      const ctx = document.getElementById('intersectionPlot').getContext('2d');
+      const datasets = [
+        {
+          label: 'Intersección x',
+          data: sizes.map((size, i) => ({ x: size, y: xs[i] })),
+          borderColor: 'rgba(153, 102, 255, 1)',
+          backgroundColor: 'rgba(153, 102, 255, 0.2)',
+          fill: false,
+          tension: 0.1,
+          showLine: false,
+          pointRadius: 5,
+          type: 'scatter'
+        }
+      ];
+      if (reg) {
+        datasets.push({
+          label: 'Regresión',
+          data: [
+            { x: sizes[0], y: reg.slope * sizes[0] + reg.intercept },
+            { x: sizes[sizes.length - 1], y: reg.slope * sizes[sizes.length - 1] + reg.intercept }
+          ],
+          borderColor: 'rgba(0,0,0,0.7)',
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          type: 'line'
+        });
+        // Show regression formula and R^2
+        const formula = `x = ${reg.slope.toFixed(3)}·size + ${reg.intercept.toFixed(3)}`;
+        const r2 = `R² = ${reg.r2.toFixed(4)}`;
+        summaryDiv.querySelector('.intersection-regression-info').textContent = `${formula}   ${r2}`;
+      }
+
+      new Chart(ctx, {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true } },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Matrix Size' }
+            },
+            y: {
+              title: { display: true, text: 'Índice de intersección (x)' }
+            }
+          }
+        }
+      });
+    }
+    // --- END NEW ---
+  </script>
+</body>
+</html>
