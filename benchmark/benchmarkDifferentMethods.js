@@ -12,11 +12,18 @@ camelcase: 0
 */
 // Prepare matrices once
 const cardinalities = Array.from(
-  xSequentialFillFromStep({ from: 10, step: 10, size: 1 }),
+  xSequentialFillFromStep({ from: 10, step: 10, size: 14 }),
 );
-const dimensions = Array.from(
-  xSequentialFillFromStep({ from: 10, step: 25, size: 1 }),
-);
+console.log(16 ** 2);
+// const dimensions = Array.from(
+//   xSequentialFillFromStep({ from: 16, step: 25, size: 1 }),
+// );
+const dimensions = [
+  16, 32, 64, 96, 128, 196, 256, 320, 400, 450, 512, 702, 1024, 1500, 2048,
+  3072, 4096,
+];
+console.log(cardinalities.at(-1));
+
 lineplot(() => {
   // bench('mmulSmall($size)', function* (ctx) {
   //   const cardinality = ctx.get('cardinality');
