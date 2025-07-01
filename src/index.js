@@ -239,8 +239,8 @@ export class SparseMatrix {
       rows: thisRows,
       values: thisValues,
     } = this.getNonZeros();
-
-    const result = new SparseMatrix(m, p);
+    // console.log(m, p);
+    const result = new SparseMatrix(m, p, { initialCapacity: 256 });
     const nbOtherActive = otherCols.length;
     const nbThisActive = thisCols.length;
     for (let t = 0; t < nbThisActive; t++) {
@@ -253,7 +253,7 @@ export class SparseMatrix {
         }
       }
     }
-
+    // console.log(result.cardinality);
     return result;
   }
   _mmulMediumDensity(other) {
@@ -270,7 +270,7 @@ export class SparseMatrix {
       values: thisValues,
     } = this.getNonZeros();
 
-    const result = new SparseMatrix(m, p);
+    const result = new SparseMatrix(m, p, { initialCapacity: 256 });
     const nbThisActive = thisCols.length;
     for (let t = 0; t < nbThisActive; t++) {
       const i = thisRows[t];
