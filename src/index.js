@@ -171,7 +171,10 @@ export class SparseMatrix {
     const densityThis = this.density;
     if (this.cardinality < 42 && other.cardinality < 42) {
       return this._mmulSmall(other);
-    } else if (other.cardinality - 0.019 * other.rows + 46.3 < 10) {
+    } else if (
+      other.rows > 100 &&
+      Math.abs(other.cardinality - 0.019 * other.rows + 46.3) < 20
+    ) {
       return this._mmulLowDensity(other);
     }
 
