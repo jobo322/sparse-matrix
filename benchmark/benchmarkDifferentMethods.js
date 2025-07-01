@@ -6,37 +6,62 @@ import { SparseMatrix } from '../src/index.js';
 import { randomMatrix } from './utils/randomMatrix.js';
 import { writeFile } from 'node:fs/promises';
 
-const size = 256; // Fixed density for this comparison;
-
 /* eslint 
 func-names: 0
 camelcase: 0
 */
 // Prepare matrices once
-const sizes = Array.from(
-  xSequentialFillFromStep({ from: 10, step: 5, size: 20 }),
+const cardinalities = Array.from(
+  xSequentialFillFromStep({ from: 10, step: 10, size: 1 }),
+);
+const dimensions = Array.from(
+  xSequentialFillFromStep({ from: 10, step: 25, size: 1 }),
 );
 lineplot(() => {
-  bench('mmulSmall($size)', function* (ctx) {
-    const cardinality = ctx.get('cardinality');
-    // Prepare matrices once
-    const A = new SparseMatrix(randomMatrix(size, size, cardinality));
-    const B = new SparseMatrix(randomMatrix(size, size, cardinality));
-    // Benchmark the multiplication
-    yield () => do_not_optimize(A.mmul(B));
-  }).args('cardinality', sizes); //.range('size', 32, 1024, 2); // 16, 32, 64, 128, 256
+  // bench('mmulSmall($size)', function* (ctx) {
+  //   const cardinality = ctx.get('cardinality');
+  //   // Prepare matrices once
+  //   const A = new SparseMatrix(randomMatrix(size, size, cardinality));
+  //   const B = new SparseMatrix(randomMatrix(size, size, cardinality));
+  //   // Benchmark the multiplication
+  //   yield () => do_not_optimize(A._mmulSmall(B));
+  //  A = null;
+  //   B = null;
+  // }).args('cardinality', sizes); //.range('size', 32, 1024, 2); // 16, 32, 64, 128, 256
 
-  bench('mmulLowDensity()($cardinality)', function* (ctx) {
+  bench('low($cardinality,$dimension)', function* (ctx) {
     const cardinality = ctx.get('cardinality');
+    const size = ctx.get('dimension');
     // Prepare matrices once
-    const A = new SparseMatrix(randomMatrix(size, size, cardinality));
-    const B = new SparseMatrix(randomMatrix(size, size, cardinality));
+    let A = new SparseMatrix(randomMatrix(size, size, cardinality));
+    let B = new SparseMatrix(randomMatrix(size, size, cardinality));
+
+    // Benchmark the multiplication
+    yield () => do_not_optimize(A._mmulLowDensity(B));
+    A = null;
+    B = null;
+  })
+    .gc('inner')
+    .args('cardinality', cardinalities) //.range('size', 32, 1024, 2); //.args('size', sizes);
+    .args('dimension', dimensions);
+
+  bench('medium($cardinality,$dimension)', function* (ctx) {
+    const cardinality = ctx.get('cardinality');
+    const size = ctx.get('dimension');
+    // Prepare matrices once
+    let A = new SparseMatrix(randomMatrix(size, size, cardinality));
+    let B = new SparseMatrix(randomMatrix(size, size, cardinality));
 
     // Benchmark the multiplication
     yield () => do_not_optimize(A._mmulMediumDensity(B));
-  }).args('cardinality', sizes); //.range('size', 32, 1024, 2); //.args('size', sizes);
+    A = null;
+    B = null;
+  })
+    .gc('inner')
+    .args('cardinality', cardinalities) //.range('size', 32, 1024, 2); //.args('size', sizes);
+    .args('dimension', dimensions);
 
-  // bench('CSC($cardinality)', function* (ctx) {
+  // bench('mmul($cardinality)', function* (ctx) {
   //   const cardinality = ctx.get('cardinality');
   //   // Prepare matrices once
   //   const A = new SparseMatrix(randomMatrix(size, size, cardinality));
@@ -48,7 +73,17 @@ lineplot(() => {
 });
 
 // Run benchmarks and capture results
-const results = await run();
+const results = await run({
+  // Enable garbage collection between benchmarks
+  gc: true,
+  // More conservative sampling to allow GC to work
+  min_samples: 10,
+  max_samples: 100,
+  // Longer minimum CPU time to get stable results
+  min_cpu_time: 1000, // 1 second minimum
+  // Enable colors for better output readability
+  colors: true,
+});
 
 // Process and store results
 const processedResults = [];
@@ -58,7 +93,8 @@ for (const benchmark of results.benchmarks) {
     if (run.stats) {
       processedResults.push({
         name: benchmark.alias,
-        size: run.args.size,
+        cardinality: run.args.cardinality,
+        dimension: run.args.dimension,
         avg: run.stats.avg,
         min: run.stats.min,
         max: run.stats.max,
@@ -74,6 +110,6 @@ for (const benchmark of results.benchmarks) {
 
 // Save results to JSON file
 await writeFile(
-  `benchmark-results-${size}.json`,
+  `benchmark-results.json`,
   JSON.stringify(processedResults, null, 2),
 );

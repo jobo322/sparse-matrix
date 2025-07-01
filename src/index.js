@@ -171,7 +171,7 @@ export class SparseMatrix {
     const densityThis = this.density;
     if (this.cardinality < 42 && other.cardinality < 42) {
       return this._mmulSmall(other);
-    } else if (other.cardinality < 0.015 * other.rows + 18.073) {
+    } else if (other.cardinality - 0.019 * other.rows + 46.3 < 10) {
       return this._mmulLowDensity(other);
     }
 
@@ -1606,13 +1606,25 @@ function csrToCsc(csrMatrix, numCols) {
 function cooToCsr(cooMatrix, nbRows) {
   const { values, columns, rows } = cooMatrix;
   const csrRowPtr = new Float64Array(nbRows + 1);
-  const length = values.length;
-  let currentRow = rows[0];
-  for (let index = 0; index < length; ) {
-    while (currentRow === rows[index] && index < length) ++index;
-    csrRowPtr[currentRow + 1] = index;
-    currentRow += 1;
+  // const length = values.length;
+  // let currentRow = rows[0];
+  // for (let index = 0; index < length; ) {
+  //   while (currentRow === rows[index] && index < length) ++index;
+  //   csrRowPtr[currentRow + 1] = index;
+  //   currentRow += 1;
+  // }
+
+  // Count non-zeros per row
+  const numberOfNonZeros = rows.length;
+  for (let i = 0; i < numberOfNonZeros; i++) {
+    csrRowPtr[rows[i] + 1]++;
   }
+
+  // Compute cumulative sum
+  for (let i = 1; i <= nbRows; i++) {
+    csrRowPtr[i] += csrRowPtr[i - 1];
+  }
+
   return { rows: csrRowPtr, columns, values };
 }
 
