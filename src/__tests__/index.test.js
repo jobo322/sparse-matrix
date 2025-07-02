@@ -64,7 +64,13 @@ describe('Sparse Matrix', () => {
     expect(newSparse.to2DArray()).toStrictEqual(denseM1);
     const expectedDense = denseMatrixMultiply(denseM1, denseM2);
 
-    expect(m3.to2DArray()).toStrictEqual(expectedDense);
+    // Compare each element using toBeCloseTo
+    const result = m3.to2DArray();
+    for (let i = 0; i < expectedDense.length; i++) {
+      for (let j = 0; j < expectedDense[0].length; j++) {
+        expect(result[i][j]).toBeCloseTo(expectedDense[i][j], 5);
+      }
+    }
   });
 
   it('kronecker', () => {

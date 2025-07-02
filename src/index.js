@@ -171,40 +171,11 @@ export class SparseMatrix {
     const densityThis = this.density;
     if (this.cardinality < 42 && other.cardinality < 42) {
       return this._mmulSmall(other);
-    } else if (
-      other.rows > 100 &&
-      Math.abs(other.cardinality - 0.019 * other.rows + 46.3) < 20
-    ) {
+    } else if (other.rows > 100 && other.cardinality < 110) {
       return this._mmulLowDensity(other);
     }
 
-    const m = this.rows;
-    const p = other.columns;
-    const {
-      columns: otherCols,
-      rows: otherRows,
-      values: otherValues,
-    } = other.getNonZeros({ format: 'csr' });
-    const {
-      columns: thisCols,
-      rows: thisRows,
-      values: thisValues,
-    } = this.getNonZeros();
-
-    const result = new SparseMatrix(m, p);
-    const nbThisActive = thisCols.length;
-    for (let t = 0; t < nbThisActive; t++) {
-      const i = thisRows[t];
-      const j = thisCols[t];
-      const oStart = otherRows[j];
-      const oEnd = otherRows[j + 1];
-      for (let k = oStart; k < oEnd; k++) {
-        const l = otherCols[k];
-        result.set(i, l, result.get(i, l) + otherValues[k] * thisValues[t]);
-      }
-    }
-
-    return result;
+    return this._mmulMediumDensity(other);
   }
 
   _mmulSmall(other) {
@@ -259,6 +230,7 @@ export class SparseMatrix {
     // console.log(result.cardinality);
     return result;
   }
+
   _mmulMediumDensity(other) {
     const m = this.rows;
     const p = other.columns;
