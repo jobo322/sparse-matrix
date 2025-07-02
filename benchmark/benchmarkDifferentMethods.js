@@ -11,30 +11,44 @@ func-names: 0
 camelcase: 0
 */
 // Prepare matrices once
-const cardinalities = Array.from(
-  xSequentialFillFromStep({ from: 10, step: 10, size: 14 }),
-);
-console.log(16 ** 2);
-// const dimensions = Array.from(
-//   xSequentialFillFromStep({ from: 16, step: 25, size: 1 }),
+// const cardinalities = Array.from(
+//   xSequentialFillFromStep({ from: 10, step: 5, size: 25 }),
 // );
-const dimensions = [
-  16, 32, 64, 96, 128, 196, 256, 320, 400, 450, 512, 702, 1024, 1500, 2048,
-  3072, 4096,
-];
+
+// const dimensions = Array.from(
+//   xSequentialFillFromStep({ from: 700, step: 100, size: 13 }),
+// );
+const cardinalities = [120, 110];
+const dimensions = [1024];
+
+console.log(
+  cardinalities
+    .flatMap((e, i) => {
+      return dimensions.map((d, di) => {
+        return [d, e, (e / d ** 2).toExponential()];
+      });
+    })
+    .sort((a, b) => a[0] - b[0])
+    .join('\n'),
+);
 console.log(cardinalities.at(-1));
 
 lineplot(() => {
-  // bench('mmulSmall($size)', function* (ctx) {
+  // bench('hibrid($cardinality,$dimension)', function* (ctx) {
   //   const cardinality = ctx.get('cardinality');
+  //   const size = ctx.get('dimension');
   //   // Prepare matrices once
-  //   const A = new SparseMatrix(randomMatrix(size, size, cardinality));
-  //   const B = new SparseMatrix(randomMatrix(size, size, cardinality));
+  //   let A = new SparseMatrix(randomMatrix(size, size, cardinality));
+  //   let B = new SparseMatrix(randomMatrix(size, size, cardinality));
+
   //   // Benchmark the multiplication
-  //   yield () => do_not_optimize(A._mmulSmall(B));
-  //  A = null;
+  //   yield () => do_not_optimize(A.mmul(B));
+  //   A = null;
   //   B = null;
-  // }).args('cardinality', sizes); //.range('size', 32, 1024, 2); // 16, 32, 64, 128, 256
+  // })
+  //   .gc('inner')
+  //   .args('cardinality', cardinalities) //.range('size', 32, 1024, 2); //.args('size', sizes);
+  //   .args('dimension', dimensions);
 
   bench('low($cardinality,$dimension)', function* (ctx) {
     const cardinality = ctx.get('cardinality');
@@ -59,10 +73,19 @@ lineplot(() => {
     let A = new SparseMatrix(randomMatrix(size, size, cardinality));
     let B = new SparseMatrix(randomMatrix(size, size, cardinality));
 
+    const dummy = new Array(1000).fill(0);
+    do_not_optimize(dummy);
+
     // Benchmark the multiplication
-    yield () => do_not_optimize(A._mmulMediumDensity(B));
-    A = null;
-    B = null;
+    yield () => {
+      const result = A._mmulMediumDensity(B);
+      do_not_optimize(result);
+      return result;
+    };
+
+    // Explicit cleanup
+    do_not_optimize(A);
+    do_not_optimize(B);
   })
     .gc('inner')
     .args('cardinality', cardinalities) //.range('size', 32, 1024, 2); //.args('size', sizes);
@@ -78,17 +101,29 @@ lineplot(() => {
   //   yield () => do_not_optimize(A.mmul(B));
   // }).args('cardinality', sizes);
 });
-
+function createSeededRandom(seed) {
+  let state = seed;
+  return function () {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+}
 // Run benchmarks and capture results
 const results = await run({
-  // Enable garbage collection between benchmarks
+  // Force GC between every benchmark
   gc: true,
-  // More conservative sampling to allow GC to work
-  min_samples: 10,
-  max_samples: 100,
-  // Longer minimum CPU time to get stable results
-  min_cpu_time: 1000, // 1 second minimum
-  // Enable colors for better output readability
+  // More samples for statistical significance
+  min_samples: 20,
+  max_samples: 200,
+  // Longer warmup to stabilize CPU state
+  warmup_samples: 10,
+  warmup_threshold: 100, // ms
+  // Longer minimum time for stable measurements
+  min_cpu_time: 2000, // 2 seconds minimum
+  // Batch settings to reduce variance
+  batch_samples: 5,
+  batch_threshold: 10, // ms
+  // Enable colors
   colors: true,
 });
 
@@ -117,6 +152,6 @@ for (const benchmark of results.benchmarks) {
 
 // Save results to JSON file
 await writeFile(
-  `benchmark-results.json`,
+  `benchmark-results5.json`,
   JSON.stringify(processedResults, null, 2),
 );

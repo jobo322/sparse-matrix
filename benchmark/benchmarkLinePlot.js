@@ -6,7 +6,7 @@ import { SparseMatrix } from '../src/index.js';
 import { SparseMatrix as SparseMatrixOld } from './class/SparseMatrixOld.js';
 import { randomMatrix } from './utils/randomMatrix.js';
 
-const density = 0.03; // Fixed density for this comparison;
+const density = 0.01; // Fixed density for this comparison;
 
 /* eslint 
 func-names: 0 
@@ -21,16 +21,16 @@ lineplot(() => {
     const size = ctx.get('size');
 
     // Prepare matrices once
-    const A = new SparseMatrix(randomMatrix(size, size, density));
-    const B = new SparseMatrix(randomMatrix(size, size, density));
+    const A = new SparseMatrix(randomMatrix(size, size, density * size ** 2));
+    const B = new SparseMatrix(randomMatrix(size, size, density * size ** 2));
     // Benchmark the multiplication
     yield () => do_not_optimize(A.mmul(B));
   }).args('size', sizes); //.range('size', 32, 1024, 2); // 16, 32, 64, 128, 256
 
   bench('SparseOld.mmul($size)', function* (ctx) {
     const size = ctx.get('size');
-    const A = randomMatrix(size, size, density);
-    const B = randomMatrix(size, size, density);
+    const A = randomMatrix(size, size, density * size ** 2);
+    const B = randomMatrix(size, size, density * size ** 2);
     const AOld = new SparseMatrixOld(A);
     const BOld = new SparseMatrixOld(B);
 
